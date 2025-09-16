@@ -1,0 +1,30 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE configs
+.vscode/
+.idea/
+
+# Data and cache
+*.sqlite3
+
+# Secrets
+.env
+
+# Build artifacts (PyInstaller, cx_Freeze, etc.)
+build/
+dist/
+*.spec
