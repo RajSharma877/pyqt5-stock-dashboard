@@ -10,31 +10,65 @@ os.makedirs(CSV_FOLDER, exist_ok=True)
 
 news_cache = {}
 
+
 def get_stock_data(ticker):
     ticker = ticker.upper().strip()
     csv_path = os.path.join(CSV_FOLDER, f"{ticker}.csv")
 
     if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
+        # 💡 KEY CHANGE: Read the CSV using the first TWO rows as headers
+        df = pd.read_csv(csv_path, header=[0, 1])
+
+        # 💡 KEY CHANGE: Flatten the MultiIndex columns to a single level
+        # This converts ('Open', 'AAPL') to 'Open', ('Date', '') to 'Date', etc.
+        new_cols = []
+        for col in df.columns:
+            # If the top level is 'Date', use only 'Date' (it's often a tuple like ('Date', ''))
+            if "Date" in col[0]:
+                new_cols.append("Date")
+            # Otherwise, use the top level (Open, High, Low, Close, Volume)
+            else:
+                new_cols.append(col[0])
+
+        df.columns = new_cols
+
     else:
+        # --- Existing download logic ---
         df = yf.download(ticker, period="6mo", group_by="ticker")
         if df.empty:
             return None
 
-        # If it's multi-index, flatten it
+        # When downloading, the data is typically MultiIndex (e.g., ('AAPL', 'Open'))
+        # You need to flatten it to match the expected single-level columns for saving.
+        # This part of your existing code is good for initial download/save:
         if isinstance(df.columns, pd.MultiIndex):
-            df.columns = [col[0] for col in df.columns]
+            # Flatten to just 'Open', 'High', 'Low', 'Close', 'Volume'
+            df.columns = [col[1] for col in df.columns]
 
         df.reset_index(inplace=True)
+
+        # NOTE: Saving this *flattented* DataFrame will result in the two-row header
+        # when you read it back with the code above.
         df.to_csv(csv_path, index=False)
 
-    # Ensure required columns exist
-    expected_cols = {"Date", "Open", "High", "Low", "Close", "Volume"}
+        print(f"✅ Saved and formatted {ticker}.csv")
+
+    # ✅ Ensure correct columns
+    expected_cols = {
+        "Date",
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+    }  # Added 'Adj Close' as it's common
+
+    # After flattening, check for columns
     if not expected_cols.issubset(df.columns):
         print(f"⚠️ Missing columns for {ticker}, got {df.columns}")
         return None
 
-    # Convert types
+    # ✅ Clean and convert datatypes
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
     df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce")
