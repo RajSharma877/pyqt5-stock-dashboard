@@ -24,6 +24,7 @@ import os
 import matplotlib.pyplot as plt
 
 from workers.ai_worker import AIChatWorker
+from workers.live_price_worker import LivePriceWorker
 from ui.ui_main import DashboardUI
 from ui.ui_reports import ReportsUI
 from widgets.chart_widget import ChartWidget
@@ -399,8 +400,78 @@ class StockDashboard(QMainWindow):
             self.dashboard_ui.search_btn.setEnabled(True)
             self.dashboard_ui.search_btn.setText("🔍 SEARCH")
 
+            try:
+                if hasattr(self, "live_worker") and self.live_worker.isRunning():
+                    self.live_worker.stop()
+
+                self.live_worker = LivePriceWorker(ticker)
+                self.live_worker.price_update.connect(self.on_live_price)
+                self.live_worker.error.connect(lambda err: print("Live WS Error:", err))
+                self.live_worker.start()
+                print(f"📡 Live price updates started for {ticker}")
+            except Exception as e:
+                print(f"⚠️ Could not start live feed: {e}")
+
         except Exception as e:
             self.on_data_error(f"Error processing data: {str(e)}")
+
+    def on_live_price(self, ticker, price):
+        """Update chart label or small indicator in the UI."""
+        try:
+            self.dashboard_ui.avg_label.setText(f"📡 Live {ticker}: ${price:.2f}")
+            # self.update_live_chart(ticker, price)
+        except Exception as e:
+            print("Live price UI update error:", e)
+
+    # def update_live_chart(self, ticker: str, price: float):
+    #     """ Update the chart with the new live price. """
+    #     try:
+    #         if self.last_df is None or self.last_ticker != ticker:
+    #             return
+            
+    #         latest_time = self.last_df.index[-1]
+    #         last_close = self.last_df.iloc[-1]["Close"]
+
+    #         if pd.Timestamp.now() - latest_time > pd.Timedelta("1min"):
+    #             new_row = pd.DataFrame(
+    #                 {
+    #                     "Open": [price],
+    #                     "High": [price],
+    #                     "Low": [price],
+    #                     "Close": [price],
+    #                     "Volume": [0],
+    #                 },
+    #                 index=[pd.Timestamp.now()],
+    #             )
+    #             self.last_df = pd.concat([self.last_df, new_row])
+    #         else:
+    #             self.last_df.at[latest_time, "Close"] = price
+    #             self.last_df.at[latest_time, "High"] = max(
+    #                 self.last_df.at[latest_time, "High"], price
+    #             )
+    #             self.last_df.at[latest_time, "Low"] = min(
+    #                 self.last_df.at[latest_time, "Low"], price
+    #             )
+            
+    #         self.chart_widget.animate_redraw(self.last_df.tail(100))
+    #         self.last_df.to_csv(f"./csv_data_files/{ticker}.csv")
+
+
+    #     except Exception as e:
+    #         print("Live chart update error:", e)
+
+
+    # Closing web socket
+    def closeEvent(self, event):
+        try:
+            if hasattr(self, "live_worker") and self.live_worker.isRunning():
+                self.live_worker.stop()
+                print("🛑 Live feed stopped.")
+        except Exception as e:
+            print("Error stopping live feed:", e)
+        event.accept()
+
+
 
     def create_enhanced_news_widget(self, news):
         """Create an enhanced news widget with better styling"""

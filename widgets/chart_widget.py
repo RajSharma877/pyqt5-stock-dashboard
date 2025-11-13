@@ -894,6 +894,24 @@ class ChartWidget(QWidget):
         self.layout.addWidget(self.canvas)
         self.canvas.draw()
 
+    # def animate_redraw(self, df):
+    #     """Smoothly redraw only the updated portion of the chart."""
+    #     try:
+    #         self.ax_main.clear()
+    #         self.ax_volume.clear()
+    #         import mplfinance as mpf
+    #         mpf.plot(
+    #             df,
+    #             type='candle',
+    #             style='yahoo' if not self.is_dark else 'charles',
+    #             ax=self.ax_main,
+    #             volume=self.ax_volume,
+    #             show_nontrading=False,
+    #         )
+    #         self.canvas.draw_idle()  # Non-blocking, smooth refresh
+    #     except Exception as e:
+    #         print("Chart redraw error:", e)
+
     def set_theme(self, is_dark: bool):
         """Change theme and refresh chart"""
         self.is_dark = is_dark
