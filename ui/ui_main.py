@@ -138,7 +138,7 @@ class DashboardUI(QWidget):
             ("🏠 Dashboard", "dashboard"),
             ("📊 History", "history"),
             ("📋 Reports", "reports"),
-            ("⚙️ Settings", "settings"),
+            ("💹  Market Mood", "market mood"),
         ]
         
         for item_text, item_id in menu_items:
