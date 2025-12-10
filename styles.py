@@ -1,4 +1,3 @@
-
 LIGHT_STYLE = """
 /* ======== GLOBAL STYLES ======== */
 QWidget {
@@ -281,6 +280,105 @@ QWidget[objectName="news_item"] {
     margin: 6px 0px;
 }
 
+ QTabWidget#reports_tabs::pane {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: white;
+        padding: 10px;
+    }
+    
+    QTabWidget#reports_tabs::tab-bar {
+        alignment: center;
+    }
+    
+    QTabWidget#reports_tabs QTabBar::tab {
+        background: #f8fafc;
+        color: #64748b;
+        border: 1px solid #e2e8f0;
+        border-bottom: none;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        padding: 12px 24px;
+        margin-right: 4px;
+        font-weight: 600;
+        font-size: 11px;
+    }
+    
+    QTabWidget#reports_tabs QTabBar::tab:selected {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #3b82f6, stop:1 #8b5cf6);
+        color: white;
+        border: 1px solid #3b82f6;
+    }
+    
+    QTabWidget#reports_tabs QTabBar::tab:hover {
+        background: #f1f5f9;
+        color: #334155;
+    }
+    
+    QPushButton#generate_ai_btn {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #8b5cf6, stop:1 #a855f7);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 10px 20px;
+    }
+    
+    QPushButton#generate_ai_btn:hover {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #7c3aed, stop:1 #9333ea);
+        transform: translateY(-1px);
+    }
+    
+    QPushButton#generate_ai_btn:pressed {
+        background: #6d28d9;
+        transform: translateY(0px);
+    }
+    
+    QPushButton#generate_ai_btn:disabled {
+        background: #d1d5db;
+        color: #9ca3af;
+    }
+    
+    QLabel#ai_status_label {
+        color: #64748b;
+        font-size: 11px;
+        font-style: italic;
+        padding: 8px;
+        background: rgba(59, 130, 246, 0.1);
+        border-radius: 6px;
+        border-left: 3px solid #3b82f6;
+    }
+    
+    QTextEdit#ai_report_text {
+        background: white;
+        color: #1f2937;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 20px;
+        font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+        font-size: 11px;
+        line-height: 1.6;
+    }
+    
+    QLabel#status_label {
+        color: #64748b;
+        font-size: 12px;
+        padding: 10px;
+        background: rgba(59, 130, 246, 0.05);
+        border-radius: 8px;
+        font-weight: 500;
+    }
+    
+    QScrollArea#report_scroll {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+    }
+
 QWidget[objectName="news_item"]:hover {
     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                                 stop: 0 #f0f9ff, stop: 1 #e0f2fe);
@@ -485,6 +583,105 @@ QCheckBox::indicator:hover {
     border: 2px solid #64748b;
 }
 
+  QTabWidget#reports_tabs::pane {
+        border: 1px solid #334155;
+        border-radius: 12px;
+        background: #1e293b;
+        padding: 10px;
+    }
+    
+    QTabWidget#reports_tabs::tab-bar {
+        alignment: center;
+    }
+    
+    QTabWidget#reports_tabs QTabBar::tab {
+        background: #334155;
+        color: #94a3b8;
+        border: 1px solid #475569;
+        border-bottom: none;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        padding: 12px 24px;
+        margin-right: 4px;
+        font-weight: 600;
+        font-size: 11px;
+    }
+    
+    QTabWidget#reports_tabs QTabBar::tab:selected {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #3b82f6, stop:1 #8b5cf6);
+        color: white;
+        border: 1px solid #3b82f6;
+    }
+    
+    QTabWidget#reports_tabs QTabBar::tab:hover {
+        background: #475569;
+        color: #e2e8f0;
+    }
+    
+    QPushButton#generate_ai_btn {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #8b5cf6, stop:1 #a855f7);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 10px 20px;
+    }
+    
+    QPushButton#generate_ai_btn:hover {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #7c3aed, stop:1 #9333ea);
+        transform: translateY(-1px);
+    }
+    
+    QPushButton#generate_ai_btn:pressed {
+        background: #6d28d9;
+        transform: translateY(0px);
+    }
+    
+    QPushButton#generate_ai_btn:disabled {
+        background: #4b5563;
+        color: #9ca3af;
+    }
+    
+    QLabel#ai_status_label {
+        color: #94a3b8;
+        font-size: 11px;
+        font-style: italic;
+        padding: 8px;
+        background: rgba(59, 130, 246, 0.1);
+        border-radius: 6px;
+        border-left: 3px solid #3b82f6;
+    }
+    
+    QTextEdit#ai_report_text {
+        background: #1e293b;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 20px;
+        font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+        font-size: 11px;
+        line-height: 1.6;
+    }
+    
+    QLabel#status_label {
+        color: #94a3b8;
+        font-size: 12px;
+        padding: 10px;
+        background: rgba(59, 130, 246, 0.1);
+        border-radius: 8px;
+        font-weight: 500;
+    }
+    
+    QScrollArea#report_scroll {
+        border: 1px solid #334155;
+        border-radius: 12px;
+        background: #0f172a;
+    }
+
 /* ======== LABELS & HEADERS ======== */
 QLabel {
     font-weight: 600;
@@ -601,6 +798,7 @@ QPushButton, QCheckBox, QLineEdit, QFrame {
     transition: all 0.2s ease-in-out;
 }
 """
+
 
 def get_theme(is_dark):
     return DARK_STYLE if is_dark else LIGHT_STYLE
