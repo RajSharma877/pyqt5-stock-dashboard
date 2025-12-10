@@ -33,6 +33,7 @@ from workers.live_price_worker import LivePriceWorker
 from workers.news_worker import LiveNewsWorker
 from workers.sentiment_worker import SentimentWorker
 from workers.hybrid_forecast_worker import HybridForecastWorker
+from workers.ai_report_worker import AIReportWorker
 
 # ui
 from ui.ui_main import DashboardUI
@@ -220,6 +221,8 @@ class StockDashboard(QMainWindow):
             self.reports_ui.export_csv_btn.clicked.connect(self.export_csv)
         if hasattr(self.reports_ui, "export_pdf_btn"):
             self.reports_ui.export_pdf_btn.clicked.connect(self.export_pdf)
+        if hasattr(self.reports_ui, "generate_ai_report_btn"):
+            self.reports_ui.generate_ai_report_btn.clicked.connect(self.generate_ai_report)
 
         # Sentiment widget button actions
         if hasattr(self.sentiment_widget, "back_btn"):
@@ -232,6 +235,7 @@ class StockDashboard(QMainWindow):
         self.sentiment_worker = None
         self.ai_worker = None
         self.forecast_worker = None  # Hybrid Forecast Worker
+        self.ai_report_worker = None  # AI Report Worker
 
     def _debounced_indicator_change(self):
         """Debounce checkbox changes to avoid excessive reloads"""
@@ -250,6 +254,81 @@ class StockDashboard(QMainWindow):
                 show_bb=self.dashboard_ui.bb_checkbox.isChecked(),
                 show_sr=self.dashboard_ui.sr_checkbox.isChecked(),
             )
+
+    def generate_ai_report(self):
+        """Generate AI-powered stock report using Groq API"""
+        if self.last_df is None or self.last_ticker is None:
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "📋 Please load stock data first before generating AI report."
+            )
+            return
+        
+        # Check for api key
+        load_dotenv()
+        api_key = os.getenv("GROQ_API_KEY")
+
+        if not api_key:
+            QMessageBox.warning(
+                self,
+                "API Key Missing",
+                "⚠️ GROQ_API_KEY not found in environment.\nPlease add it to your .env file."
+            )
+            return
+        
+        try:
+            # Disable button during generation
+            self.reports_ui.generate_ai_report_btn.setEnabled(False)
+            self.reports_ui.generate_ai_report_btn.setText("⏳ Generating...")
+            self.reports_ui.update_ai_status("🚀 Starting AI report generation...", 0)
+
+            # prepare stock data package
+            stock_data_package = {
+                'dataframe': self.last_df,
+                'ticker': self.last_ticker,
+                'forecast': None
+            }
+
+            # Add forecast data if available (from hybrid forecast)
+            if hasattr(self, 'last_forecast_df') and self.last_forecast_df is not None:
+                try:
+                    latest_forecast = self.last_forecast_df.iloc[-1]
+                    stock_data_package['forecast'] = {
+                        'forecasted_price': f"{latest_forecast['Forecast']:.2f}",
+                        'lower_bound': f"{latest_forecast['Lower_Bound']:.2f}",
+                        'upper_bound': f"{latest_forecast['Upper_Bound']:.2f}",
+                        'model': 'Hybrid LSTM + Prophet',
+                        'confidence': 'Medium-High'
+                    }
+                except Exception as e:
+                    print(f"Could not add forecast data: {e}")
+
+            # Clean up previous ai report worker
+            if self.ai_report_worker and self.ai_report_worker.isRunning():
+                self.ai_report_worker.cancel()
+                self.ai_report_worker.quit()
+                self.ai_report_worker.wait(1000)
+
+            # Create and start ai report worker
+            self.ai_report_worker = AIReportWorker(
+                api_key=api_key,
+                ticker=self.last_ticker,
+                stock_data=stock_data_package
+            )
+
+            # Connect signals
+            self.ai_report_worker.report_ready.connect(self._display_ai_report)
+            self.ai_report_worker.progress_update.connect(self._update_ai_report_progress)
+            self.ai_report_worker.error_occurred.connect(self._handle_ai_report_error)
+
+            # Start generation
+            self.ai_report_worker.start()
+            print(f"🤖 Started AI report generation for {self.last_ticker}")
+
+        except Exception as e:
+            self._handle_ai_report_error(f"Failed to start AI report generation: {str(e)}")
+
 
     def handle_user_message(self, message: str, request_id: str):
         """Handle user message and call AI worker"""
@@ -412,10 +491,39 @@ class StockDashboard(QMainWindow):
         if self.stacked_widget.currentWidget() == self.reports_ui:
             self.reports_ui.update_progress(message, percentage)
 
+    def _display_ai_report(self, report_text):
+        """Display the generated AI report"""
+        if self.stacked_widget.currentWidget() == self.reports_ui:
+            self.reports_ui.set_ai_report(report_text)
+            print("✅ AI report displayed successfully")
+
+        # re enable button
+        self.reports_ui.generate_ai_report_btn.setEnabled(True)
+        self.reports_ui.generate_ai_report_btn.setText("⚡ Generate AI Report")
+
+    def _update_ai_report_progress(self, message, percentage):
+        """Update progress during ai report generation"""
+        if self.stacked_widget.currentWidget() == self.reports_ui:
+            self.reports_ui.update_ai_status(message, percentage)
+
+    def _handle_ai_report_error(self, error_msg):
+        """Handle AI report generation errors"""
+        print(f"❌ AI Report Error: {error_msg}") 
+        if self.stacked_widget.currentWidget() == self.reports_ui:
+            self.reports_ui.show_ai_error(error_msg)
+
+        # Re enable button
+        self.reports_ui.generate_ai_report_btn.setEnabled(True)
+        self.reports_ui.generate_ai_report_btn.setText("⚡ Generate AI Report")
+
+     
+
     def _display_report_with_hybrid_forecast(self, forecast_df, metrics):
         """Display report with hybrid forecast and metrics"""
         if self.stacked_widget.currentWidget() == self.reports_ui:
             print(f"✅ Hybrid forecast complete! Metrics: {metrics}")
+            # Store forecast_df for ai report generation
+            self.last_forecast_df = forecast_df
             self.reports_ui.set_report(
                 self.last_df, self.last_ticker, forecast_df, metrics
             )
@@ -946,6 +1054,7 @@ class StockDashboard(QMainWindow):
             (self.ai_worker, "AI"),
             (self.worker, "data"),
             (self.forecast_worker, "hybrid forecast"),
+            (self.ai_report_worker, "AI report"),
         ]
 
         for worker, name in workers_to_cleanup:
