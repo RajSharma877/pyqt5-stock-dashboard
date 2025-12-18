@@ -94,13 +94,86 @@ from styles import get_theme
 #             self.error_occurred.emit(str(e))
 
 
+# -------- Export Worker (Background file I/O) ----------#
+class ExportWorker(QThread):
+    """Background worker for CSV/PDF exports to prevent UI blocking"""
+    finished = pyqtSignal(str, str)  # (path, export_type)
+    error = pyqtSignal(str)
+
+    def __init__(self, df, ticker, export_type, avg_price=0, min_price=0, max_price=0, total_volume=0):
+        super().__init__()
+        self.df = df.copy()
+        self.ticker = ticker
+        self.export_type = export_type
+        self.avg_price = avg_price
+        self.min_price = min_price
+        self.max_price = max_price
+        self.total_volume = total_volume
+
+    def run(self):
+        try:
+            os.makedirs("reports", exist_ok=True)
+            if self.export_type == "csv":
+                path = f"reports/{self.ticker}_reports.csv"
+                self.df.to_csv(path)
+            else:  # pdf
+                path = f"reports/{self.ticker}_report.pdf"
+                self._create_pdf(path)
+            self.finished.emit(path, self.export_type)
+        except Exception as e:
+            self.error.emit(str(e))
+
+    def _create_pdf(self, path):
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib import colors
+        
+        doc = SimpleDocTemplate(path)
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph(f"📈 Stock Report for {self.ticker}", styles["Title"]),
+            Spacer(1, 12),
+            Paragraph(f"💰 Average Price: ${self.avg_price:.2f}", styles["Normal"]),
+            Paragraph(f"📉 Minimum Price: ${self.min_price:.2f}", styles["Normal"]),
+            Paragraph(f"📈 Maximum Price: ${self.max_price:.2f}", styles["Normal"]),
+            Paragraph(f"📊 Total Volume: {self.total_volume:,}", styles["Normal"]),
+            Spacer(1, 12),
+        ]
+        
+        # Add data table (limited rows for performance)
+        data = [["Date", "Open", "High", "Low", "Close", "Volume"]]
+        for _, row in self.df.tail(20).iterrows():
+            data.append([
+                str(row.get("Date", ""))[:10],
+                f"${row.get('Open', 0):.2f}",
+                f"${row.get('High', 0):.2f}",
+                f"${row.get('Low', 0):.2f}",
+                f"${row.get('Close', 0):.2f}",
+                f"{int(row.get('Volume', 0)):,}"
+            ])
+        
+        table = Table(data)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b82f6")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        story.append(table)
+        doc.build(story)
+
+
 # -------- Data Worker ----------#
 class DataWorker(QThread):
     finished = pyqtSignal(object, str, dict, str, list)
     error = pyqtSignal(str)
 
-    def __init__(self, ticker, indicators):
-        super().__init__()
+    def __init__(self, ticker, indicators, parent=None):
+        super().__init__(parent)
         self.ticker = ticker
         self.indicators = indicators
 
@@ -181,7 +254,7 @@ class StockDashboard(QMainWindow):
         # OPTIMIZATION: Debounce checkbox changes
         self._checkbox_debounce_timer = QTimer()
         self._checkbox_debounce_timer.setSingleShot(True)
-        self._checkbox_debounce_timer.setInterval(300)  # 300ms debounce
+        self._checkbox_debounce_timer.setInterval(500)  # 500ms debounce (increased from 300ms)
         self._checkbox_debounce_timer.timeout.connect(self._reload_chart_only)
 
         self.dashboard_ui.ma_checkbox.stateChanged.connect(
@@ -336,10 +409,19 @@ class StockDashboard(QMainWindow):
         api_key = os.getenv("GROQ_API_KEY")
 
         # Clean up previous AI worker
-        if self.ai_worker and self.ai_worker.isRunning():
-            self.ai_worker.quit()
-            self.ai_worker.wait(1000)
+        if self.ai_worker:
+            if self.ai_worker.isRunning():
+                self.ai_worker.quit()
+                try:
+                    self.ai_worker.response_ready.disconnect()
+                    self.ai_worker.error_occurred.disconnect()
+                except: pass
+                self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+            else:
+                self.ai_worker.deleteLater()
+            self.ai_worker = None
 
+        # TODO: Modify AIChatWorker to accept parent if possible, for now just cleaning up
         self.ai_worker = AIChatWorker(api_key, message)
         self.ai_worker.response_ready.connect(
             lambda resp: self.chat_widget.add_ai_response(resp, request_id)
@@ -560,16 +642,19 @@ class StockDashboard(QMainWindow):
 
     def toggle_theme(self):
         self.is_dark_mode = not self.is_dark_mode
+        # Apply stylesheet first - this is fast
         self.apply_theme()
 
-        self.chart_widget.set_theme(self.is_dark_mode)
-        self.reports_ui.set_theme(self.is_dark_mode)
-
-        if hasattr(self, "sentiment_widget"):
-            self.sentiment_widget.setStyleSheet(get_theme(self.is_dark_mode))
-
+        # Update button immediately
         if hasattr(self, "theme_btn"):
             self.theme_btn.setText("☀️" if self.is_dark_mode else "🌙")
+
+        # Defer heavy theme operations to prevent UI blocking
+        QTimer.singleShot(10, lambda: self.chart_widget.set_theme(self.is_dark_mode))
+        QTimer.singleShot(30, lambda: self.reports_ui.set_theme(self.is_dark_mode))
+
+        if hasattr(self, "sentiment_widget"):
+            QTimer.singleShot(50, lambda: self.sentiment_widget.setStyleSheet(get_theme(self.is_dark_mode)))
 
     def start_live_news(self):
         """Start fetching live news and analyzing sentiment"""
@@ -616,8 +701,9 @@ class StockDashboard(QMainWindow):
             return
 
         if self.sentiment_worker and self.sentiment_worker.isRunning():
+            self.sentiment_worker.stop()
             self.sentiment_worker.quit()
-            self.sentiment_worker.wait(1000)
+            self.sentiment_worker.wait(1500)
 
         self.sentiment_worker = SentimentWorker(api_key, headlines)
         self.sentiment_worker.sentiment_ready.connect(self.update_sentiment_ui)
@@ -651,11 +737,20 @@ class StockDashboard(QMainWindow):
         if self.dashboard_ui.ma_checkbox.isChecked():
             indicators.append("MA")
 
-        if self.worker and self.worker.isRunning():
-            self.worker.quit()
-            self.worker.wait(1000)
+        if self.worker:
+            if self.worker.isRunning():
+                self.worker.quit()
+                try:
+                    self.worker.finished.disconnect()
+                    self.worker.error.disconnect()
+                except: pass
+                # Clean up when finished (non-blocking)
+                self.worker.finished.connect(self.worker.deleteLater)
+            else:
+                self.worker.deleteLater()
+            self.worker = None
 
-        self.worker = DataWorker(ticker, indicators)
+        self.worker = DataWorker(ticker, indicators, parent=self)
         self.worker.finished.connect(self.on_data_loaded)
         self.worker.error.connect(self.on_data_error)
         self.worker.start()
@@ -672,7 +767,7 @@ class StockDashboard(QMainWindow):
                 f"💰 Avg: ${self.avg_price:.2f} | 📊 Records: {self.total_records} | 📡 Connecting..."
             )
 
-            # Chart update
+            # Chart update - already uses background worker
             self.chart_widget.plot_chart(
                 df,
                 ticker,
@@ -684,7 +779,7 @@ class StockDashboard(QMainWindow):
                 show_sr=self.dashboard_ui.sr_checkbox.isChecked(),
             )
 
-            # Fundamentals display
+            # Fundamentals display - quick string operation
             if fundamentals:
                 fund_items = []
                 for k, v in fundamentals.items():
@@ -716,30 +811,44 @@ class StockDashboard(QMainWindow):
                     "🏢 Company details not available"
                 )
 
-            # OPTIMIZED: Clear and create news widgets efficiently
-            self._update_news_widgets(news_list)
-
+            # Re-enable search button immediately
             self.dashboard_ui.search_btn.setEnabled(True)
             self.dashboard_ui.search_btn.setText("🔍 SEARCH")
 
-            # Start live price updates
-            try:
-                if self.live_worker and self.live_worker.isRunning():
-                    self.live_worker.stop()
-                    self.live_worker.quit()
-                    self.live_worker.wait(2000)
-                    print("🛑 Stopped previous live worker")
-
-                self.live_worker = LivePriceWorker(ticker)
-                self.live_worker.price_update.connect(self.on_live_price)
-                self.live_worker.error.connect(lambda err: print("Live WS Error:", err))
-                self.live_worker.start()
-                print(f"📡 Live price updates started for {ticker}")
-            except Exception as e:
-                print(f"⚠️ Could not start live feed: {e}")
+            # DEFER heavy operations to next event loop iteration
+            # This prevents UI from blocking during widget creation
+            QTimer.singleShot(0, lambda: self._update_news_widgets(news_list))
+            QTimer.singleShot(50, lambda: self._start_live_price_worker(ticker))
 
         except Exception as e:
             self.on_data_error(f"Error processing data: {str(e)}")
+
+    def _start_live_price_worker(self, ticker):
+        """Start live price updates in background - called deferred"""
+        try:
+            if self.live_worker:
+                if self.live_worker.isRunning():
+                    self.live_worker.stop()
+                    # Disconnect signals
+                    try:
+                        self.live_worker.price_update.disconnect()
+                        self.live_worker.error.disconnect()
+                    except: pass
+                    # Safe cleanup
+                    self.live_worker.finished.connect(self.live_worker.deleteLater)
+                else:
+                    self.live_worker.deleteLater()
+                print("🛑 Stopping previous live worker")
+                self.live_worker = None
+
+            # Pass parent=self for safety
+            self.live_worker = LivePriceWorker(ticker, parent=self)
+            self.live_worker.price_update.connect(self.on_live_price)
+            self.live_worker.error.connect(lambda err: print("Live WS Error:", err))
+            self.live_worker.start()
+            print(f"📡 Live price updates started for {ticker}")
+        except Exception as e:
+            print(f"⚠️ Could not start live feed: {e}")
 
     def _update_news_widgets(self, news_list):
         """Efficiently update news widgets (OPTIMIZED)"""
@@ -751,8 +860,7 @@ class StockDashboard(QMainWindow):
                 widget.setParent(None)
                 widget.deleteLater()
 
-        # Process app events to ensure widgets are deleted
-        QApplication.processEvents()
+        # Removed processEvents() - deleteLater() handles cleanup asynchronously
 
         if news_list:
             # Limit to 5 news items and create them efficiently
@@ -941,31 +1049,9 @@ class StockDashboard(QMainWindow):
         self.dashboard_ui.search_btn.setEnabled(True)
         self.dashboard_ui.search_btn.setText("🔍 SEARCH")
 
-    # ---------------- Exporting ---------------- #
+    # ---------------- Exporting (Background Workers) ---------------- #
     def export_csv(self):
-        if self.last_df is not None:
-            try:
-                path = f"reports/{self.last_ticker}_reports.csv"
-                os.makedirs("reports", exist_ok=True)
-                self.last_df.to_csv(path)
-                QMessageBox.information(
-                    self,
-                    "Export Successful",
-                    f"📊 CSV exported successfully!\nPath: {path}",
-                )
-            except Exception as e:
-                QMessageBox.critical(
-                    self, "Export Error", f"❌ Failed to export CSV: {str(e)}"
-                )
-        else:
-            QMessageBox.warning(
-                self,
-                "No Data",
-                "📋 No data available to export. Please load stock data first.",
-            )
-
-    def export_pdf(self):
-        """Export PDF report (OPTIMIZED)"""
+        """Export CSV report in background thread"""
         if self.last_df is None:
             QMessageBox.warning(
                 self,
@@ -974,66 +1060,68 @@ class StockDashboard(QMainWindow):
             )
             return
 
-        try:
-            os.makedirs("reports", exist_ok=True)
-            path = f"reports/{self.last_ticker}_report.pdf"
+        # Disable buttons and show progress
+        self.reports_ui.export_csv_btn.setEnabled(False)
+        self.reports_ui.export_csv_btn.setText("⏳ Exporting...")
 
-            doc = SimpleDocTemplate(path)
-            styles = getSampleStyleSheet()
-            story = [
-                Paragraph(f"📈 Stock Report for {self.last_ticker}", styles["Title"]),
-                Spacer(1, 12),
-            ]
+        # Start background export
+        self.export_worker = ExportWorker(self.last_df, self.last_ticker, "csv")
+        self.export_worker.finished.connect(self._on_export_finished)
+        self.export_worker.error.connect(self._on_export_error)
+        self.export_worker.start()
 
-            avg_price = self.last_df["Close"].mean()
-            min_price = self.last_df["Close"].min()
-            max_price = self.last_df["Close"].max()
-            total_volume = self.last_df["Volume"].sum()
-
-            story.append(
-                Paragraph(f"💰 Average Price: ${avg_price:.2f}", styles["Normal"])
-            )
-            story.append(
-                Paragraph(f"📉 Minimum Price: ${min_price:.2f}", styles["Normal"])
-            )
-            story.append(
-                Paragraph(f"📈 Maximum Price: ${max_price:.2f}", styles["Normal"])
-            )
-            story.append(
-                Paragraph(f"📊 Total Volume: {total_volume:,}", styles["Normal"])
-            )
-            story.append(Spacer(1, 12))
-
-            # OPTIMIZED: Use Agg backend and clean up properly
-            plt.switch_backend("Agg")
-            fig, ax = plt.subplots(figsize=(8, 4))
-            self.last_df["Close"].plot(
-                ax=ax, title=f"{self.last_ticker} Closing Prices", color="#3b82f6"
-            )
-            ax.set_ylabel("Price ($)")
-            ax.set_xlabel("Date")
-            ax.grid(True, alpha=0.3)
-
-            graph_path = f"reports/{self.last_ticker}_graph.png"
-            plt.savefig(graph_path, bbox_inches="tight", dpi=150)
-            plt.close(fig)
-
-            story.append(Image(graph_path, width=500, height=250))
-            doc.build(story)
-
-            QMessageBox.information(
+    def export_pdf(self):
+        """Export PDF report in background thread"""
+        if self.last_df is None:
+            QMessageBox.warning(
                 self,
-                "Export Successful",
-                f"📄 PDF report exported successfully!\nPath: {path}",
+                "No Data",
+                "📋 No data available to export. Please load stock data first.",
             )
+            return
 
-        except Exception as e:
-            QMessageBox.critical(
-                self, "Export Error", f"❌ Failed to export PDF: {str(e)}"
-            )
-        finally:
-            # Clean up matplotlib
-            plt.close("all")
+        # Disable buttons and show progress
+        self.reports_ui.export_pdf_btn.setEnabled(False)
+        self.reports_ui.export_pdf_btn.setText("⏳ Exporting...")
+
+        # Calculate stats for PDF
+        avg_price = self.last_df["Close"].mean()
+        min_price = self.last_df["Close"].min()
+        max_price = self.last_df["Close"].max()
+        total_volume = self.last_df["Volume"].sum()
+
+        # Start background export
+        self.export_worker = ExportWorker(
+            self.last_df, self.last_ticker, "pdf",
+            avg_price, min_price, max_price, total_volume
+        )
+        self.export_worker.finished.connect(self._on_export_finished)
+        self.export_worker.error.connect(self._on_export_error)
+        self.export_worker.start()
+
+    def _on_export_finished(self, path, export_type):
+        """Handle successful export"""
+        # Re-enable buttons
+        self.reports_ui.export_csv_btn.setEnabled(True)
+        self.reports_ui.export_csv_btn.setText("📊 Export CSV")
+        self.reports_ui.export_pdf_btn.setEnabled(True)
+        self.reports_ui.export_pdf_btn.setText("📄 Export PDF")
+
+        QMessageBox.information(
+            self,
+            "Export Successful",
+            f"{'📊 CSV' if export_type == 'csv' else '📄 PDF'} exported successfully!\nPath: {path}",
+        )
+
+    def _on_export_error(self, error_msg):
+        """Handle export error"""
+        # Re-enable buttons
+        self.reports_ui.export_csv_btn.setEnabled(True)
+        self.reports_ui.export_csv_btn.setText("📊 Export CSV")
+        self.reports_ui.export_pdf_btn.setEnabled(True)
+        self.reports_ui.export_pdf_btn.setText("📄 Export PDF")
+
+        QMessageBox.critical(self, "Export Error", f"❌ Failed to export: {error_msg}")
 
     # ---------------- Cleanup ---------------- #
     def closeEvent(self, event):

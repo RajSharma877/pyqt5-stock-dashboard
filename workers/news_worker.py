@@ -1,48 +1,4 @@
 # news_worker.py
-# import feedparser
-# import time
-# from PyQt5.QtCore import QThread, pyqtSignal
-
-# class LiveNewsWorker(QThread):
-#     news_ready = pyqtSignal(list)
-
-#     def __init__(self, ticker, interval=30):
-#         super().__init__()
-#         self.ticker = ticker.upper()
-#         self.interval = interval
-#         self.running = True
-
-#     def fetch_rss_news(self):
-#         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={self.ticker}&region=US&lang=en-US"
-#         feed = feedparser.parse(url)
-
-#         print("News Feed: ", feed)
-
-#         news_items = []
-#         for entry in feed.entries[:10]:
-#             news_items.append({
-#                 "title": entry.title,
-#                 "link": entry.link,
-#                 "summary": entry.summary if "summary" in entry else "",
-#                 "publisher": entry.get("source", {}).get("title", "Yahoo Finance"),
-#             })
-#         print("News items: ", news_items)
-#         return news_items
-
-#     def run(self):
-#         while self.running:
-#             try:
-#                 news = self.fetch_rss_news()
-#                 self.news_ready.emit(news)
-#             except Exception as e:
-#                 print("News error:", e)
-
-#             time.sleep(self.interval)
-
-#     def stop(self):
-#         self.running = False
-        
-# news_worker.py
 import feedparser
 import time
 from PyQt5.QtCore import QThread, pyqtSignal
