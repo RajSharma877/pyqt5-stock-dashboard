@@ -403,7 +403,7 @@ class ReportsUI(QWidget):
         """Update progress bar during forecast generation"""
         self.progress_label.setText(message)
         self.progress_bar.setValue(percentage)
-        QApplication.processEvents()
+        # Removed processEvents() - Qt event loop handles updates automatically
     
     def hide_loading(self):
         """Hide loading indicators after forecast completes"""
@@ -424,7 +424,6 @@ class ReportsUI(QWidget):
     def update_ai_status(self, message, percentage):
         """Update AI report generation progress (NEW)"""
         self.ai_status_label.setText(f"{message} ({percentage}%)")
-        QApplication.processEvents()
     
     def show_ai_error(self, error_msg):
         """Show AI report error (NEW)"""
